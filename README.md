@@ -22,5 +22,8 @@
 - Mine is free so use it update it whatever i dont care.
 - if youve got any suggestions TELL ME. this is whats happened from me *Attempting* to learn python so id love to learn more!
 
+## Preview
+![Dynamic Island Preview](images/Preview.png)
+
 ## side note
 - i'm not going to tell you how to run it, anyone on github enough to be able to find this will probably figure it out.
