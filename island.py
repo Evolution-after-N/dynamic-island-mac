@@ -200,7 +200,7 @@ animate_bars()
 def on_click(event):
     global is_expanded
 
-    if is_expanded and event.y > 36:
+    if event.y > 36:
         return
     is_expanded = not is_expanded
 
