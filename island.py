@@ -5,6 +5,7 @@ import subprocess
 from PIL import Image, ImageTk, ImageDraw
 import random
 import threading
+from pathlib import Path
 import time
 import math
 root = tk.Tk()
@@ -19,6 +20,7 @@ album_image_large = None
 data_lock = threading.Lock()
 NSApp.setActivationPolicy_(NSApplicationActivationPolicyAccessory)
 root.overrideredirect(1)
+COVER_PATH = str(Path.home() / "cover.jpg")
 root.wm_attributes("-topmost", True)
 root.wm_attributes("-transparent", True)
 screen_width = root.winfo_screenwidth()
@@ -230,7 +232,7 @@ def save_album_art():
     result = subprocess.run(["osascript", "temp_script.applescript"], capture_output=True, text=True)
 #presents the image to tkinter +  rounds corners
 def load_album_art():
-    image = Image.open("/Users/noah/cover.jpg")
+    image = Image.open(COVER_PATH)
     image = image.resize((24, 24), Image.LANCZOS)
     image = image.convert("RGBA")
 
@@ -248,7 +250,7 @@ def background_worker():
     while True:
         try:
             save_album_art()
-            image = Image.open("/Users/noah/cover.jpg")
+            image = Image.open(COVER_PATH)
             image = image.resize((24, 24), Image.LANCZOS)
             image = image.convert("RGBA")
             mask = Image.new("L", image.size, 0)
