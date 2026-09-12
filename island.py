@@ -1,5 +1,7 @@
 from AppKit import NSApp, NSApplicationActivationPolicyAccessory
 import tkinter as tk
+from AppKit import NSStatusBar, NSMenu, NSMenuItem, NSVariableStatusItemLength
+from Foundation import NSObject
 from AppKit import NSApp
 import subprocess
 from PIL import Image, ImageTk, ImageDraw
@@ -10,6 +12,7 @@ import time
 import math
 root = tk.Tk()
 is_expanded = False
+is_visible = True
 is_playing=True
 bar_heights = [10, 10, 10, 10, 10]
 album_image = None
@@ -311,6 +314,20 @@ def previous_track(event=None):
     animate_button_press("prev_btn", 38.5, 60)
     root.after(50, lambda: subprocess.run(["osascript", "-e", 'tell application "Music" to previous track']))
 
+# menu bar shit
+class MenuTarget(NSObject):
+    def toggleIsland_(self, sender):
+        global is_visible
+        if is_visible:
+            root.withdraw()
+        else:
+            root.deiconify()
+        is_visible = not is_visible
+
+    def quitApp_(self, sender):
+        root.destroy()
+
+
 update_display()
  # helps make fullscreen possible
 def set_window_behavior():
@@ -323,5 +340,24 @@ root.after(100, set_window_behavior)
 #creates a thread for background worker--with kill switch for if porgram closes
 thread = threading.Thread(target=background_worker, daemon=True)
 thread.start()
+
+#status bar item shiiii
+status_bar = NSStatusBar.systemStatusBar()
+status_item = status_bar.statusItemWithLength_(NSVariableStatusItemLength)
+status_item.setTitle_("◐")
+
+menu_target = MenuTarget.alloc().init()
+
+menu = NSMenu.alloc().init()
+
+toggle_item = NSMenuItem.alloc().initWithTitle_action_keyEquivalent_("Toggle Island", "toggleIsland:", "")
+toggle_item.setTarget_(menu_target)
+menu.addItem_(toggle_item)
+
+quit_item = NSMenuItem.alloc().initWithTitle_action_keyEquivalent_("Quit", "quitApp:", "")
+quit_item.setTarget_(menu_target)
+menu.addItem_(quit_item)
+
+status_item.setMenu_(menu)
 
 root.mainloop()
