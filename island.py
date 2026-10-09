@@ -1,12 +1,13 @@
 from AppKit import NSApp, NSApplicationActivationPolicyAccessory
 import tkinter as tk
 from AppKit import NSStatusBar, NSMenu, NSMenuItem, NSVariableStatusItemLength
-from Foundation import NSObject
+from Foundation import NSObject, NSDistributedNotificationCenter
 from AppKit import NSApp
 import subprocess
 from PIL import Image, ImageTk, ImageDraw
 import random
 import threading
+import queue
 from pathlib import Path
 import time
 import math
@@ -19,6 +20,10 @@ album_image = None
 latest_artist = ""
 latest_song = ""
 latest_art_image = None
+last_drawn = None
+last_track_id = None
+art_timer = None
+song_queue = queue.Queue()
 album_image_large = None
 data_lock = threading.Lock()
 NSApp.setActivationPolicy_(NSApplicationActivationPolicyAccessory)
@@ -180,10 +185,16 @@ def animate_collapse(step=0, steps=12):
     canvas.tag_lower("pill_bg")
     if step < steps:
         root.after(15, lambda: animate_collapse(step + 1, steps))
+    else:
+        root.geometry(f"280x90+{island_centred}+0")
+
 #equalizer barssss
 bar_positions = [250, 253, 256, 259, 262]
 
 def animate_bars():
+    if not is_visible:
+        root.after(500, animate_bars)
+        return
     canvas.delete("eq_bar")
 
     for i, x in enumerate(bar_positions):
@@ -210,6 +221,7 @@ def on_click(event):
     is_expanded = not is_expanded
 
     if is_expanded:
+        root.geometry(f"280x90+{island_centred}+0")
         animate_expand()
     else:
         canvas.delete("expanded_content")
@@ -246,32 +258,6 @@ def load_album_art():
     image.putalpha(mask)
 
     return ImageTk.PhotoImage(image)
-# Gets current Song and textifies it
-def background_worker():
-    global latest_artist, latest_song, latest_art_image
-
-    while True:
-        try:
-            save_album_art()
-            image = Image.open(COVER_PATH)
-            image = image.resize((24, 24), Image.LANCZOS)
-            image = image.convert("RGBA")
-            mask = Image.new("L", image.size, 0)
-            draw = ImageDraw.Draw(mask)
-            draw.rounded_rectangle((0, 0, 24, 24), radius=6, fill=255)
-            image.putalpha(mask)
-
-            artist, song = get_current_song()
-
-            with data_lock:
-                latest_artist = artist
-                latest_song = song
-                latest_art_image = image
-        except Exception as e:
-            print("Background error:", e)
-
-        time.sleep(1)
-
 def get_current_song():
     script = 'tell application "Music" to get {artist of current track, name of current track}'
     result = subprocess.run(["osascript", "-e", script], capture_output=True, text=True)
@@ -279,14 +265,21 @@ def get_current_song():
     artist, song = output.split(", ", 1)
     return artist, song
 def update_display():
-    global album_image
-    canvas.delete("song_text")
-    canvas.delete("album_art")
+    if not is_visible:
+        root.after(500, update_display)
+        return
+    global album_image, last_drawn
 
     with data_lock:
         artist = latest_artist
         song = latest_song
         art = latest_art_image
+    if (song, artist,art) == last_drawn:
+            root.after(200, update_display)
+            return
+    last_drawn = (song, artist, art)
+    canvas.delete("song_text")
+    canvas.delete("album_art")
 
     if art is not None:
         album_image = ImageTk.PhotoImage(art)
@@ -299,9 +292,7 @@ def update_display():
  #playbuttons
 def toggle_playback(event=None):
         global is_playing
-        subprocess.run(["osascript", "-e", 'tell application "Music" to playpause'])
-        is_playing = not is_playing
-        draw_play_button()
+        subprocess.Popen(["osascript", "-e", 'tell application "Music" to playpause'])
 def animate_button_press(tag, cx, cy):
     canvas.scale(tag, cx, cy, 0.9, 0.9)
     root.after(80, lambda: canvas.scale(tag, cx, cy, 1/0.9, 1/0.9))
@@ -315,6 +306,52 @@ def previous_track(event=None):
     root.after(50, lambda: subprocess.run(["osascript", "-e", 'tell application "Music" to previous track']))
 
 # menu bar shit
+
+def refresh_art():
+    global latest_art_image
+    save_album_art()
+    image = Image.open(COVER_PATH)
+    image = image.resize((24, 24), Image.LANCZOS)
+    image = image.convert("RGBA")
+    mask = Image.new("L", image.size, 0)
+    draw = ImageDraw.Draw(mask)
+    draw.rounded_rectangle((0, 0, 24, 24), radius=6, fill=255)
+    image.putalpha(mask)
+    with data_lock:
+        latest_art_image = image
+
+def initial_load():
+    global latest_artist, latest_song
+    try:
+        artist, song = get_current_song()
+        latest_artist = artist
+        latest_song = song
+        refresh_art()
+    except Exception as e:
+        print("Initial load error:", e)
+def process_song(info):
+    global is_playing, latest_song, latest_artist, last_track_id, art_timer
+    is_playing = (info["State"] == "Playing")
+    latest_song = info["Name"]
+    latest_artist = info["Artist"]
+    track_id = info["ID"]
+    if track_id != last_track_id:
+        last_track_id = track_id
+        if art_timer is not None:
+            root.after_cancel(art_timer)
+        art_timer = root.after(400, lambda: threading.Thread(target=refresh_art, daemon=True).start())
+    if is_expanded:
+        draw_play_button()
+
+def check_queue():
+    try:
+        while True:
+            info = song_queue.get_nowait()
+            process_song(info)
+    except queue.Empty:
+        pass
+    root.after(100, check_queue)
+check_queue()
 class MenuTarget(NSObject):
     def toggleIsland_(self, sender):
         global is_visible
@@ -326,8 +363,14 @@ class MenuTarget(NSObject):
 
     def quitApp_(self, sender):
         root.destroy()
-
-
+    def songChanged_(self, notification):
+        info = notification.userInfo()
+        song_queue.put({
+            "State": info["Player State"],
+            "Name": info["Name"],
+            "Artist": info["Artist"],
+            "ID": info["PersistentID"],
+        })
 update_display()
  # helps make fullscreen possible
 def set_window_behavior():
@@ -335,11 +378,10 @@ def set_window_behavior():
         if window.title() == "tk":
             window.setCollectionBehavior_((1 << 0) | (1 << 8))
             window.setLevel_(2147483647)
+    root.geometry(f"280x36+{island_centred}+0")
 
 root.after(100, set_window_behavior)
-#creates a thread for background worker--with kill switch for if porgram closes
-thread = threading.Thread(target=background_worker, daemon=True)
-thread.start()
+threading.Thread(target=initial_load, daemon=True).start()
 
 #status bar item shiiii
 status_bar = NSStatusBar.systemStatusBar()
@@ -347,6 +389,7 @@ status_item = status_bar.statusItemWithLength_(NSVariableStatusItemLength)
 status_item.setTitle_("◐")
 
 menu_target = MenuTarget.alloc().init()
+NSDistributedNotificationCenter.defaultCenter().addObserver_selector_name_object_(menu_target, "songChanged:", "com.apple.Music.playerInfo", None)
 
 menu = NSMenu.alloc().init()
 
