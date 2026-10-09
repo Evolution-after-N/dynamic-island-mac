@@ -9,13 +9,13 @@
 - Expanding interface
 
 ## How it works
-- it is a borderless always on top window pinned to the centre of the top. styled to look native to MacOS, it polls Apple Music via AppleScript to keep UI responsive. all icons sit directly on a `tkinter` canvas.
+- it is a borderless always on top window pinned to the centre of the top. styled to look native to MacOS, The script uses Apple Music notifications to update the pill etc. all icons sit directly on a `tkinter` canvas.
 
 ## Requirements
 - macOS
 - Python 3
 - Apple music app
-- Python packaged pyobjc (for Appkit), Pillow
+- Python packaged `pyobjc` (for `Appkit`), `Pillow`
 
 ## Notes
 - this is a small project that i built because i was too stubborn to pay for someone else's, its no where near as good so you should probably use theirs. 
